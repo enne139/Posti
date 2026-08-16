@@ -2,6 +2,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Taccuino — luoghi, eventi, attività, camminate</title>
 
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1B2A33">
+<meta name="description" content="Archivio personale di posti, eventi, attività e camminate su mappa.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Taccuino">
+<link rel="icon" href="icone/icona-192.png">
+<link rel="apple-touch-icon" href="icone/icona-192.png">
+
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -158,6 +168,19 @@ button,input,select,textarea{font:inherit;color:inherit}
 }
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--paper-hi);border-color:var(--ink)}
 .toggle{display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-right:auto}
+#raggio{
+  font-family:var(--mono);font-size:11px;padding:2px 4px;
+  border:1px solid var(--rule);border-radius:2px;background:var(--paper-hi);
+}
+#btn-data.avvisa::after{
+  content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--signal);margin-left:6px;vertical-align:middle;
+}
+.qui{
+  width:16px;height:16px;border-radius:50%;background:var(--signal);
+  border:2px solid var(--paper-hi);box-shadow:0 0 0 2px rgba(201,138,43,.4);
+}
+.card__dist{color:var(--signal);font-weight:500}
 
 .list{list-style:none;margin:0;padding:6px;overflow:auto;flex:1;min-height:0}
 .card{
@@ -404,6 +427,7 @@ button,input,select,textarea{font:inherit;color:inherit}
         <input id="q" type="text" placeholder="Cerca nel taccuino" aria-label="Cerca nel taccuino">
       </div>
       <button class="btn" id="btn-new">Nuova voce</button>
+      <button class="btn btn--ghost" id="btn-install" hidden>Installa</button>
       <div class="menu">
         <button class="btn btn--ghost" id="btn-data" aria-expanded="false">Dati</button>
         <div class="menu__pop" id="menu-data">
@@ -412,9 +436,10 @@ button,input,select,textarea{font:inherit;color:inherit}
           <button data-act="kml-out">Esporta per CoMaps (.kml)</button>
           <button data-act="gpx-out">Esporta le tracce (.gpx)</button>
           <hr>
-          <button data-act="import">Carica un backup…</button>
+          <button data-act="import">Carica un file…</button>
           <button data-act="wipe">Svuota il taccuino</button>
-          <div class="hint">Il .geojson si apre in uMap, QGIS e quasi ogni altra mappa. Scaricalo ogni tanto: è la tua copia.</div>
+          <div class="hint" id="hint-backup"></div>
+          <div class="hint">Accetta .json (backup), .geojson e .kml. Il .geojson si apre in uMap e QGIS, il .kml in CoMaps e Organic Maps.</div>
         </div>
       </div>
     </div>
@@ -427,7 +452,15 @@ button,input,select,textarea{font:inherit;color:inherit}
     </div>
     <div class="side__filters">
       <label class="toggle"><input type="checkbox" id="only-todo"> Solo da fare</label>
-      <button class="chip" id="clear-tags" hidden>Togli i tag</button>
+      <button class="chip" id="btn-vicino" aria-pressed="false">Vicino a me</button>
+      <select id="raggio" hidden aria-label="Raggio di ricerca">
+        <option value="1">1 km</option>
+        <option value="3" selected>3 km</option>
+        <option value="10">10 km</option>
+        <option value="30">30 km</option>
+        <option value="100">100 km</option>
+      </select>
+      <button class="chip" id="clear-tags" hidden>Togli i tag</button>Togli i tag</button>
       <div id="tagbar" style="display:flex;flex-wrap:wrap;gap:6px;width:100%"></div>
     </div>
     <ul class="list" id="list"></ul>
@@ -556,7 +589,7 @@ button,input,select,textarea{font:inherit;color:inherit}
   </div>
 </div>
 
-<input type="file" id="import-file" accept=".json,application/json" hidden>
+<input type="file" id="import-file" accept=".json,.geojson,.kml,application/json,application/geo+json,application/vnd.google-earth.kml+xml" hidden>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
@@ -585,18 +618,19 @@ function glyphSVG(tipo, size, stroke){
 
 /* ============ archivio ============ */
 var KEY = 'taccuino:v1';
+var KEY_BACKUP = 'taccuino:backup';
 var store = {
-  get: function(){
+  get: function(k){
     if(typeof window.storage !== 'undefined' && window.storage){
-      return window.storage.get(KEY).then(function(r){ return r ? r.value : null; }).catch(function(){ return null; });
+      return window.storage.get(k).then(function(r){ return r ? r.value : null; }).catch(function(){ return null; });
     }
-    try{ return Promise.resolve(localStorage.getItem(KEY)); }catch(e){ return Promise.resolve(null); }
+    try{ return Promise.resolve(localStorage.getItem(k)); }catch(e){ return Promise.resolve(null); }
   },
-  set: function(v){
+  set: function(k, v){
     if(typeof window.storage !== 'undefined' && window.storage){
-      return window.storage.set(KEY, v).catch(function(){});
+      return window.storage.set(k, v).catch(function(){});
     }
-    try{ localStorage.setItem(KEY, v); }catch(e){}
+    try{ localStorage.setItem(k, v); }catch(e){}
     return Promise.resolve();
   }
 };
@@ -607,12 +641,14 @@ var stato = {
   tags: [],
   q: '',
   soloDaFare: false,
-  attiva: null
+  attiva: null,
+  vicino: null
 };
 var bozza = null;
 var modalitaPick = false;
+var ultimoBackup = null;
 
-function salva(){ store.set(JSON.stringify(voci)); }
+function salva(){ store.set(KEY, JSON.stringify(voci)); aggiornaBackup(); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
 /* ============ mappa ============ */
@@ -650,6 +686,17 @@ function disegna(){
   strato.clearLayers();
   marker = {};
   var visibili = filtrate();
+
+  if(stato.vicino){
+    L.circle([stato.vicino.lat, stato.vicino.lng], {
+      radius: stato.vicino.raggio * 1000,
+      color:'#C98A2B', weight:1, opacity:.7, fillColor:'#C98A2B', fillOpacity:.05
+    }).addTo(strato);
+    L.marker([stato.vicino.lat, stato.vicino.lng], {
+      icon: L.divIcon({className:'qui', iconSize:[16,16], iconAnchor:[8,8]}),
+      interactive:false, zIndexOffset:-500
+    }).addTo(strato);
+  }
 
   visibili.forEach(function(v){
     if(v.traccia && v.traccia.length > 1){
@@ -823,9 +870,20 @@ function slug(s){
 }
 
 /* ============ filtri ed elenco ============ */
+function puntoDi(v){
+  if(typeof v.lat === 'number') return [v.lat, v.lng];
+  if(v.traccia && v.traccia.length) return v.traccia[0];
+  return null;
+}
+function distanzaDa(v){
+  var p = puntoDi(v);
+  if(!p || !stato.vicino) return null;
+  return haversine([stato.vicino.lat, stato.vicino.lng], p);
+}
+
 function filtrate(){
   var q = stato.q.trim().toLowerCase();
-  return voci.filter(function(v){
+  var out = voci.filter(function(v){
     if(!stato.tipi[v.tipo]) return false;
     if(stato.soloDaFare && v.fatto) return false;
     if(stato.tags.length && !stato.tags.every(function(t){ return (v.tags||[]).indexOf(t) !== -1; })) return false;
@@ -833,8 +891,14 @@ function filtrate(){
       var blob = [v.nome, v.descrizione, v.indirizzo, (v.tags||[]).join(' ')].join(' ').toLowerCase();
       if(blob.indexOf(q) === -1) return false;
     }
+    if(stato.vicino){
+      var d = distanzaDa(v);
+      if(d === null || d > stato.vicino.raggio) return false;
+    }
     return true;
-  }).sort(function(a,b){
+  });
+  if(stato.vicino) return out.sort(function(a, b){ return distanzaDa(a) - distanzaDa(b); });
+  return out.sort(function(a,b){
     if(a.data && b.data) return a.data < b.data ? -1 : 1;
     if(a.data) return -1;
     if(b.data) return 1;
@@ -909,13 +973,20 @@ function renderLista(){
     li.dataset.id = x.id;
 
     var meta = [];
+    if(stato.vicino){
+      var d = distanzaDa(x);
+      if(d !== null) meta.push('§' + (d < 1 ? Math.round(d * 1000) + ' m' : (Math.round(d * 10) / 10) + ' km'));
+    }
     if(x.data) meta.push(dataIT(x.data) + (x.ora ? ' ' + x.ora : ''));
     if(x.durata) meta.push(x.durata);
     if(x.km) meta.push(x.km + ' km');
     if(x.indirizzo) meta.push(x.indirizzo);
 
     var h = '<div class="card__top">'+glyphSVG(x.tipo,16,'#F2F3EE')+'<span class="card__name">'+esc(x.nome)+'</span></div>';
-    if(meta.length) h += '<div class="card__meta"><span>'+meta.map(esc).join('</span><span>')+'</span></div>';
+    if(meta.length) h += '<div class="card__meta"><span>' +
+      meta.map(function(m){
+        return m.charAt(0) === '§' ? '<span class="card__dist">' + esc(m.slice(1)) + '</span>' : esc(m);
+      }).join('</span><span>') + '</span></div>';
     if(x.descrizione) h += '<div class="card__desc">'+esc(taglia(x.descrizione,150))+'</div>';
     if((x.tags||[]).length) h += '<div class="card__tags">'+x.tags.map(function(t){ return '<span class="tag">'+esc(t)+'</span>'; }).join('')+'</div>';
     h += '<div class="card__acts">' +
@@ -1298,7 +1369,10 @@ menu.addEventListener('click', function(e){
   if(!b) return;
   menu.classList.remove('open');
   var a = b.dataset.act;
-  if(a === 'json')     scarica('taccuino-' + oggi() + '.json', JSON.stringify(voci, null, 2), 'application/json');
+  if(a === 'json'){
+    scarica('taccuino-' + oggi() + '.json', JSON.stringify(voci, null, 2), 'application/json');
+    segnaBackup();
+  }
   if(a === 'geojson')  scarica('taccuino-' + oggi() + '.geojson', JSON.stringify(geojson(), null, 2), 'application/geo+json');
   if(a === 'kml-out')  scarica('taccuino-' + oggi() + '.kml', kml(), 'application/vnd.google-earth.kml+xml');
   if(a === 'gpx-out'){
@@ -1374,24 +1448,105 @@ function kml(lista){
   return x + '</Document>\n</kml>';
 }
 
+function vociDaGeoJSON(gj){
+  var out = [];
+  (gj.features || []).forEach(function(f){
+    var p = f.properties || {}, g = f.geometry || {};
+    var nome = p.name || p.nome || p.title || p.Name || 'Senza nome';
+    var base = {
+      descrizione: p.description || p.descrizione || p.desc || '',
+      indirizzo: p.indirizzo || p.address || '',
+      fonte: p.fonte || p.url || '',
+      data: p.data || '', durata: p.durata || '',
+      tags: (p.tags || '').toString().split(',').map(function(s){ return s.trim().toLowerCase(); }).filter(Boolean)
+    };
+    if(g.type === 'Point'){
+      out.push(nuovaVoce('luogo', nome, g.coordinates[1], g.coordinates[0], base));
+    }else if(g.type === 'LineString'){
+      var tr = g.coordinates.map(function(c){ return [c[1], c[0]]; });
+      if(tr.length < 2) return;
+      var v = nuovaVoce('passeggiata', nome, tr[0][0], tr[0][1], base);
+      v.traccia = semplifica(tr, 600);
+      v.km = Math.round(lunghezza(tr) * 10) / 10;
+      out.push(v);
+    }
+  });
+  return out;
+}
+
+function vociDaKML(txt){
+  var doc = new DOMParser().parseFromString(txt, 'text/xml');
+  var pm = doc.getElementsByTagName('Placemark'), out = [];
+  for(var i = 0; i < pm.length; i++){
+    var n = pm[i].getElementsByTagName('name')[0];
+    var d = pm[i].getElementsByTagName('description')[0];
+    var nome = n ? n.textContent.trim() : 'Senza nome';
+    var base = {descrizione: d ? d.textContent.trim() : '', indirizzo:'', fonte:'', data:'', durata:'', tags:[]};
+    var punto = pm[i].getElementsByTagName('Point')[0];
+    var linea = pm[i].getElementsByTagName('LineString')[0];
+    if(punto){
+      var c = punto.getElementsByTagName('coordinates')[0].textContent.trim().split(',');
+      out.push(nuovaVoce('luogo', nome, parseFloat(c[1]), parseFloat(c[0]), base));
+    }else if(linea){
+      var tr = linea.getElementsByTagName('coordinates')[0].textContent.trim().split(/\s+/)
+        .map(function(s){ var q = s.split(','); return [parseFloat(q[1]), parseFloat(q[0])]; })
+        .filter(function(q){ return !isNaN(q[0]) && !isNaN(q[1]); });
+      if(tr.length < 2) continue;
+      var v = nuovaVoce('passeggiata', nome, tr[0][0], tr[0][1], base);
+      v.traccia = semplifica(tr, 600);
+      v.km = Math.round(lunghezza(tr) * 10) / 10;
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+function nuovaVoce(tipo, nome, lat, lng, base){
+  return {
+    id: uid(), tipo: tipo, nome: nome,
+    descrizione: base.descrizione || '', indirizzo: base.indirizzo || '',
+    lat: lat, lng: lng, data: base.data || '', ora: '', durata: base.durata || '',
+    fonte: base.fonte || '', tags: base.tags || [], fatto: false,
+    traccia: null, km: null, creato: Date.now()
+  };
+}
+
 $('import-file').addEventListener('change', function(e){
   var f = e.target.files[0];
   if(!f) return;
   var fr = new FileReader();
   fr.onload = function(){
+    var nuove = null, tipoFile = '';
     try{
-      var d = JSON.parse(fr.result);
-      if(!Array.isArray(d)) throw new Error();
-      var scelta = voci.length
-        ? confirm('Sostituisco le ' + voci.length + ' voci attuali con le ' + d.length + ' del backup?\n\nOK sostituisce, Annulla le aggiunge a quelle che hai.')
-        : true;
-      if(scelta) voci = d;
-      else d.forEach(function(v){ v.id = uid(); voci.push(v); });
-      salva(); render();
-      inquadraTutto();
-    }catch(err){
-      alert('Questo file non è un backup del taccuino.');
+      if(/\.kml$/i.test(f.name)){
+        nuove = vociDaKML(fr.result);
+        tipoFile = 'KML';
+      }else{
+        var d = JSON.parse(fr.result);
+        if(Array.isArray(d)){
+          nuove = d; tipoFile = 'backup';
+        }else if(d && d.type === 'FeatureCollection'){
+          nuove = vociDaGeoJSON(d); tipoFile = 'GeoJSON';
+        }
+      }
+    }catch(err){ nuove = null; }
+
+    if(!nuove || !nuove.length){
+      alert('Non riesco a leggere questo file. Accetto un backup .json del taccuino, un .geojson o un .kml con almeno un punto o una traccia.');
+      e.target.value = '';
+      return;
     }
+
+    var sostituisci = false;
+    if(voci.length){
+      sostituisci = confirm('Trovate ' + nuove.length + ' voci (' + tipoFile + ').\n\nOK le mette al posto delle ' + voci.length + ' che hai adesso.\nAnnulla le aggiunge alle tue.');
+    }
+    if(sostituisci){
+      voci = nuove;
+    }else{
+      nuove.forEach(function(v){ v.id = uid(); voci.push(v); });
+    }
+    salva(); render(); inquadraTutto();
     e.target.value = '';
   };
   fr.readAsText(f);
@@ -1431,14 +1586,100 @@ $('btn-new').onclick = function(){ apriForm(null, null); };
 $('q').addEventListener('input', function(e){ stato.q = e.target.value; render(); });
 $('only-todo').addEventListener('change', function(e){ stato.soloDaFare = e.target.checked; render(); });
 
+/* ---- vicino a me ---- */
+var btnVicino = $('btn-vicino'), selRaggio = $('raggio');
+btnVicino.onclick = function(){
+  if(stato.vicino){
+    stato.vicino = null;
+    btnVicino.setAttribute('aria-pressed','false');
+    btnVicino.textContent = 'Vicino a me';
+    selRaggio.hidden = true;
+    render();
+    return;
+  }
+  if(!navigator.geolocation){
+    alert('Questo browser non espone la posizione.');
+    return;
+  }
+  btnVicino.textContent = 'cerco…';
+  navigator.geolocation.getCurrentPosition(function(p){
+    stato.vicino = {
+      lat: p.coords.latitude,
+      lng: p.coords.longitude,
+      raggio: parseFloat(selRaggio.value)
+    };
+    btnVicino.setAttribute('aria-pressed','true');
+    btnVicino.textContent = 'Vicino a me';
+    selRaggio.hidden = false;
+    render();
+    map.setView([stato.vicino.lat, stato.vicino.lng], stato.vicino.raggio <= 3 ? 14 : 11);
+  }, function(){
+    btnVicino.textContent = 'Vicino a me';
+    alert('Non riesco a leggere la posizione. Serve il permesso al sito, e su iPhone anche che la pagina sia in https.');
+  }, {enableHighAccuracy:true, timeout:10000, maximumAge:60000});
+};
+selRaggio.onchange = function(){
+  if(stato.vicino){ stato.vicino.raggio = parseFloat(selRaggio.value); render(); }
+};
+
+/* ---- promemoria del backup ---- */
+function aggiornaBackup(){
+  var el = $('hint-backup');
+  if(!el) return;
+  var g = ultimoBackup ? Math.floor((Date.now() - ultimoBackup) / 86400000) : null;
+  var testo;
+  if(!voci.length) testo = 'Il taccuino è vuoto.';
+  else if(g === null) testo = 'Non hai mai scaricato un backup: i dati vivono solo in questo browser.';
+  else if(g === 0) testo = 'Backup scaricato oggi.';
+  else if(g === 1) testo = 'Ultimo backup: ieri.';
+  else testo = 'Ultimo backup: ' + g + ' giorni fa.';
+  el.textContent = testo;
+  $('btn-data').classList.toggle('avvisa', voci.length > 0 && (g === null || g > 30));
+}
+function segnaBackup(){
+  ultimoBackup = Date.now();
+  store.set(KEY_BACKUP, String(ultimoBackup));
+  aggiornaBackup();
+}
+
+/* ---- installazione come app ---- */
+var promptInstalla = null;
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  promptInstalla = e;
+  $('btn-install').hidden = false;
+});
+window.addEventListener('appinstalled', function(){ $('btn-install').hidden = true; });
+$('btn-install').onclick = function(){
+  if(promptInstalla){
+    promptInstalla.prompt();
+    promptInstalla = null;
+    $('btn-install').hidden = true;
+    return;
+  }
+  alert('Su iPhone e iPad: pulsante Condividi in fondo a Safari, poi "Aggiungi alla schermata Home".');
+};
+var inApp = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+if(!inApp && /iPhone|iPad|iPod/.test(navigator.userAgent)) $('btn-install').hidden = false;
+
+if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+
 /* ============ avvio ============ */
-store.get().then(function(raw){
+store.get(KEY).then(function(raw){
   if(raw){
     try{ voci = JSON.parse(raw) || []; }catch(e){ voci = []; }
   }
   render();
   if(voci.length) inquadraTutto();
   setTimeout(function(){ map.invalidateSize(); }, 200);
+  return store.get(KEY_BACKUP);
+}).then(function(b){
+  ultimoBackup = b ? parseInt(b, 10) : null;
+  aggiornaBackup();
 });
 window.addEventListener('resize', function(){ map.invalidateSize(); });
 
