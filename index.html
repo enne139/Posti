@@ -221,6 +221,40 @@ button,input,select,textarea{font:inherit;color:inherit}
 .pop .k{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);display:block;margin-bottom:6px}
 .pop a{color:var(--t-attivita)}
 
+.tagbox{
+  position:relative;display:flex;flex-wrap:wrap;gap:5px;align-items:center;
+  background:#fff;border:1px solid var(--rule);border-radius:2px;padding:5px 6px;min-height:38px;
+}
+.tagbox:focus-within{outline:2px solid var(--signal);outline-offset:1px}
+.tagbox input{
+  border:0;outline:0;background:transparent;flex:1;min-width:120px;
+  padding:3px 2px;font-size:13.5px;
+}
+.tagbox .tag{display:inline-flex;align-items:center;gap:4px;background:var(--paper);padding:2px 3px 2px 8px}
+.tagbox .tag button{
+  border:0;background:none;cursor:pointer;color:var(--ink-faint);
+  font-size:14px;line-height:1;padding:0 3px;
+}
+.tagbox .tag button:hover{color:var(--t-evento)}
+.tagbox__pop{
+  position:absolute;left:-1px;right:-1px;top:calc(100% + 3px);z-index:2100;
+  background:var(--paper-hi);border:1px solid var(--rule);border-radius:2px;
+  box-shadow:0 10px 26px rgba(20,35,43,.22);
+  max-height:184px;overflow:auto;padding:4px;display:none;
+}
+.tagbox__pop.open{display:block}
+.tagbox__pop button{
+  display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;
+  background:none;border:0;text-align:left;padding:6px 8px;font-size:13px;
+  cursor:pointer;border-radius:2px;
+}
+.tagbox__pop button:hover,.tagbox__pop button.sel{background:var(--paper)}
+.tagbox__pop .n{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint)}
+.tagbox__pop .nuovo{
+  font-family:var(--cond);font-weight:600;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--t-luogo);
+}
+
 /* ---------- scheda ---------- */
 .scheda{
   position:absolute;z-index:700;left:12px;bottom:12px;
@@ -500,9 +534,14 @@ button,input,select,textarea{font:inherit;color:inherit}
       </div>
 
       <div class="field">
-        <label for="f-tags">Tag</label>
-        <input id="f-tags" type="text" placeholder="milano, cena, weekend">
-        <p class="help">Separali con la virgola. Diventano filtri nella colonna a sinistra.</p>
+        <label for="f-tag-input">Tag</label>
+        <div class="tagbox" id="f-tagbox">
+          <span id="f-tag-chips" style="display:contents"></span>
+          <input id="f-tag-input" type="text" autocomplete="off" role="combobox"
+                 aria-expanded="false" aria-autocomplete="list" placeholder="Scrivi o scegli un tag">
+          <div class="tagbox__pop" id="f-tag-pop" role="listbox"></div>
+        </div>
+        <p class="help">Cerca tra i tag che usi già, oppure premi Invio per crearne uno nuovo. Diventano filtri nella colonna a sinistra.</p>
       </div>
 
       <label class="toggle"><input type="checkbox" id="f-fatto"> Già fatto</label>
@@ -929,6 +968,7 @@ function apriForm(v, latlng){
   $('f-err').textContent = '';
   $('f-res').innerHTML = '';
   $('f-cerca').value = '';
+  $('f-tag-input').value = '';
   riempiForm();
   overlay.classList.add('open');
   setTimeout(function(){ $('f-nome').focus(); }, 30);
@@ -942,7 +982,8 @@ function riempiForm(){
   $('f-ora').value = bozza.ora || '';
   $('f-durata').value = bozza.durata || '';
   $('f-fonte').value = bozza.fonte || '';
-  $('f-tags').value = (bozza.tags || []).join(', ');
+  renderChips();
+  tagPop.classList.remove('open');
   $('f-fatto').checked = !!bozza.fatto;
   $('f-coord').textContent = bozza.lat != null
     ? bozza.lat.toFixed(5) + ', ' + bozza.lng.toFixed(5)
@@ -968,6 +1009,108 @@ function riempiForm(){
   $('w-gpx').style.display     = (bozza.tipo === 'passeggiata') ? 'block' : 'none';
 }
 
+/* ---- combo box dei tag ---- */
+var tagInput = $('f-tag-input'), tagPop = $('f-tag-pop'), tagChips = $('f-tag-chips'), tagSel = -1;
+
+function tagUsati(){
+  var c = {};
+  voci.forEach(function(v){ (v.tags||[]).forEach(function(t){ c[t] = (c[t]||0) + 1; }); });
+  return c;
+}
+function renderChips(){
+  tagChips.innerHTML = '';
+  (bozza.tags || []).forEach(function(t){
+    var s = document.createElement('span');
+    s.className = 'tag';
+    s.appendChild(document.createTextNode(t));
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = '&times;';
+    b.setAttribute('aria-label', 'Togli il tag ' + t);
+    b.onclick = function(){
+      bozza.tags = bozza.tags.filter(function(x){ return x !== t; });
+      renderChips(); suggerisci(); tagInput.focus();
+    };
+    s.appendChild(b);
+    tagChips.appendChild(s);
+  });
+}
+function normalizzaTag(t){
+  return (t || '').trim().toLowerCase().replace(/[,;]/g, '').replace(/\s+/g, ' ');
+}
+function aggiungiTag(t){
+  t = normalizzaTag(t);
+  if(!t) return;
+  if(!bozza.tags) bozza.tags = [];
+  if(bozza.tags.indexOf(t) === -1) bozza.tags.push(t);
+  tagInput.value = '';
+  renderChips(); suggerisci();
+}
+function suggerisci(){
+  var q = normalizzaTag(tagInput.value), usati = tagUsati();
+  var lista = Object.keys(usati).filter(function(t){
+    return (bozza.tags || []).indexOf(t) === -1 && (!q || t.indexOf(q) !== -1);
+  }).sort(function(a, b){
+    return usati[b] - usati[a] || a.localeCompare(b);
+  }).slice(0, 8);
+
+  var h = lista.map(function(t){
+    return '<button type="button" role="option" data-t="' + esc(t) + '">' +
+           '<span>' + esc(t) + '</span><span class="n">' + usati[t] + '</span></button>';
+  }).join('');
+  if(q && !usati[q] && (bozza.tags || []).indexOf(q) === -1){
+    h += '<button type="button" role="option" data-t="' + esc(q) + '">' +
+         '<span>' + esc(q) + '</span><span class="nuovo">nuovo</span></button>';
+  }
+  tagPop.innerHTML = h;
+  tagSel = -1;
+  tagPop.classList.toggle('open', h !== '');
+  tagInput.setAttribute('aria-expanded', h !== '' ? 'true' : 'false');
+}
+function evidenzia(d){
+  var opt = tagPop.querySelectorAll('button');
+  if(!opt.length) return;
+  tagSel += d;
+  if(tagSel < 0) tagSel = opt.length - 1;
+  if(tagSel >= opt.length) tagSel = 0;
+  for(var i = 0; i < opt.length; i++) opt[i].classList.toggle('sel', i === tagSel);
+  opt[tagSel].scrollIntoView({block:'nearest'});
+}
+tagInput.addEventListener('input', suggerisci);
+tagInput.addEventListener('focus', suggerisci);
+tagInput.addEventListener('keydown', function(e){
+  if(e.key === 'ArrowDown'){ e.preventDefault(); evidenzia(1); return; }
+  if(e.key === 'ArrowUp'){ e.preventDefault(); evidenzia(-1); return; }
+  if(e.key === 'Enter' || e.key === ',' || e.key === 'Tab'){
+    var opt = tagPop.querySelectorAll('button');
+    if(e.key === 'Tab' && tagSel < 0 && !tagInput.value.trim()) return;
+    e.preventDefault();
+    aggiungiTag(tagSel >= 0 && opt[tagSel] ? opt[tagSel].dataset.t : tagInput.value);
+    return;
+  }
+  if(e.key === 'Backspace' && !tagInput.value && (bozza.tags || []).length){
+    bozza.tags.pop(); renderChips(); suggerisci();
+    return;
+  }
+  if(e.key === 'Escape' && tagPop.classList.contains('open')){
+    e.stopPropagation(); tagPop.classList.remove('open');
+  }
+});
+tagPop.addEventListener('mousedown', function(e){ e.preventDefault(); });
+tagPop.addEventListener('click', function(e){
+  var b = e.target.closest('button[data-t]');
+  if(!b) return;
+  e.stopPropagation();
+  aggiungiTag(b.dataset.t);
+  tagInput.focus();
+});
+$('f-tagbox').addEventListener('click', function(e){
+  if(e.target === this) tagInput.focus();
+});
+document.addEventListener('click', function(e){
+  if(!$('f-tagbox').contains(e.target)) tagPop.classList.remove('open');
+});
+
 function leggiForm(){
   bozza.nome = $('f-nome').value.trim();
   bozza.descrizione = $('f-desc').value.trim();
@@ -977,7 +1120,8 @@ function leggiForm(){
   bozza.durata = $('f-durata').value.trim();
   bozza.fonte = $('f-fonte').value.trim();
   bozza.fatto = $('f-fatto').checked;
-  bozza.tags = $('f-tags').value.split(',').map(function(s){ return s.trim().toLowerCase(); }).filter(Boolean);
+  if(tagInput.value.trim()) aggiungiTag(tagInput.value);
+  if(!bozza.tags) bozza.tags = [];
 }
 
 $('f-save').onclick = function(){
