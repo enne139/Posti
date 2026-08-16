@@ -169,8 +169,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--paper-hi);border-color:var(--ink)}
 .toggle{display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-right:auto}
 #raggio{
-  font-family:var(--mono);font-size:11px;padding:2px 4px;
-  border:1px solid var(--rule);border-radius:2px;background:var(--paper-hi);
+  font-family:var(--mono);font-size:11.5px;padding:6px 6px;
+  border:1px solid #3d5058;border-radius:2px;
+  background:#25373F;color:var(--paper-hi);
+}
+#btn-vicino[aria-pressed="true"]{
+  background:var(--signal);border-color:var(--signal);color:#1B2A33;
 }
 #btn-data.avvisa::after{
   content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
@@ -426,6 +430,14 @@ button,input,select,textarea{font:inherit;color:inherit}
         </svg>
         <input id="q" type="text" placeholder="Cerca nel taccuino" aria-label="Cerca nel taccuino">
       </div>
+      <button class="btn btn--ghost" id="btn-vicino" aria-pressed="false" title="Mostra solo quello che hai intorno">Vicino a me</button>
+      <select id="raggio" hidden aria-label="Raggio di ricerca">
+        <option value="1">1 km</option>
+        <option value="3" selected>3 km</option>
+        <option value="10">10 km</option>
+        <option value="30">30 km</option>
+        <option value="100">100 km</option>
+      </select>
       <button class="btn" id="btn-new">Nuova voce</button>
       <button class="btn btn--ghost" id="btn-install" hidden>Installa</button>
       <div class="menu">
@@ -452,15 +464,7 @@ button,input,select,textarea{font:inherit;color:inherit}
     </div>
     <div class="side__filters">
       <label class="toggle"><input type="checkbox" id="only-todo"> Solo da fare</label>
-      <button class="chip" id="btn-vicino" aria-pressed="false">Vicino a me</button>
-      <select id="raggio" hidden aria-label="Raggio di ricerca">
-        <option value="1">1 km</option>
-        <option value="3" selected>3 km</option>
-        <option value="10">10 km</option>
-        <option value="30">30 km</option>
-        <option value="100">100 km</option>
-      </select>
-      <button class="chip" id="clear-tags" hidden>Togli i tag</button>Togli i tag</button>
+      <button class="chip" id="clear-tags" hidden>Togli i tag</button>
       <div id="tagbar" style="display:flex;flex-wrap:wrap;gap:6px;width:100%"></div>
     </div>
     <ul class="list" id="list"></ul>
